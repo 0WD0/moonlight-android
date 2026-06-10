@@ -49,6 +49,12 @@ public class AbsoluteTouchContext implements TouchContext {
     private final NvConnection conn;
     private final int actionIndex;
     private final View targetView;
+    public interface ReferenceDimensionProvider {
+        int get();
+    }
+
+    private final ReferenceDimensionProvider referenceWidthProvider;
+    private final ReferenceDimensionProvider referenceHeightProvider;
     private final Handler handler;
 
     private final Runnable leftButtonUpRunnable = new Runnable() {
@@ -71,9 +77,17 @@ public class AbsoluteTouchContext implements TouchContext {
 
     public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped)
     {
+        this(conn, actionIndex, view, swapped, () -> Math.max(view.getWidth(), 1), () -> Math.max(view.getHeight(), 1));
+    }
+
+    public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped,
+                                ReferenceDimensionProvider referenceWidthProvider, ReferenceDimensionProvider referenceHeightProvider)
+    {
         this.conn = conn;
         this.actionIndex = actionIndex;
         this.targetView = view;
+        this.referenceWidthProvider = referenceWidthProvider;
+        this.referenceHeightProvider = referenceHeightProvider;
         this.handler = new Handler(Looper.getMainLooper());
 
         if (swapped) {
@@ -123,10 +137,13 @@ public class AbsoluteTouchContext implements TouchContext {
         // Normalize these to the view size. We can't just drop them because we won't always get an event
         // right at the boundary of the view, so dropping them would result in our cursor never really
         // reaching the sides of the screen.
-        eventX = Math.min(Math.max(eventX, 0), targetView.getWidth());
-        eventY = Math.min(Math.max(eventY, 0), targetView.getHeight());
+        int referenceWidth = Math.max(referenceWidthProvider.get(), 1);
+        int referenceHeight = Math.max(referenceHeightProvider.get(), 1);
 
-        conn.sendMousePosition((short)eventX, (short)eventY, (short)targetView.getWidth(), (short)targetView.getHeight());
+        eventX = Math.min(Math.max(eventX, 0), referenceWidth);
+        eventY = Math.min(Math.max(eventY, 0), referenceHeight);
+
+        conn.sendMousePosition((short)eventX, (short)eventY, (short)referenceWidth, (short)referenceHeight);
     }
 
     @Override

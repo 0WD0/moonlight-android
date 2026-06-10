@@ -574,6 +574,23 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         return videoFormat;
     }
 
+    private int getOutputFormatDimension(MediaFormat format, String sizeKey, String cropStartKey, String cropEndKey) {
+        if (format.containsKey(cropStartKey) && format.containsKey(cropEndKey)) {
+            return format.getInteger(cropEndKey) - format.getInteger(cropStartKey) + 1;
+        }
+        return format.getInteger(sizeKey);
+    }
+
+    private void notifyOutputFormat(MediaFormat format) {
+        if (perfListener == null || format == null || !format.containsKey(MediaFormat.KEY_WIDTH) || !format.containsKey(MediaFormat.KEY_HEIGHT)) {
+            return;
+        }
+
+        int width = getOutputFormatDimension(format, MediaFormat.KEY_WIDTH, "crop-left", "crop-right");
+        int height = getOutputFormatDimension(format, MediaFormat.KEY_HEIGHT, "crop-top", "crop-bottom");
+        perfListener.onVideoSizeChanged(width, height);
+    }
+
     private void configureAndStartDecoder(MediaFormat format) {
         // Set HDR metadata if present
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -644,6 +661,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
             MediaFormat __outF = videoDecoder.getOutputFormat();
             LimeLog.info("Decoder input format: " + (__inF != null ? __inF.toString() : "<null>"));
             LimeLog.info("Decoder output format: " + (__outF != null ? __outF.toString() : "<null>"));
+            notifyOutputFormat(__outF);
         } catch (Throwable t) {
             LimeLog.info("Decoder formats unavailable after start");
         }
@@ -1464,6 +1482,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                                     LimeLog.info("Output format changed");
                                     outputFormat = videoDecoder.getOutputFormat();
                                     LimeLog.info("New output format: " + outputFormat);
+                                    notifyOutputFormat(outputFormat);
                                     break;
                                 default:
                                     break;

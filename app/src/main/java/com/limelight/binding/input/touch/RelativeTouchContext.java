@@ -25,8 +25,12 @@ public class RelativeTouchContext implements TouchContext {
 
     private final NvConnection conn;
     private final int actionIndex;
-    private final int referenceWidth;
-    private final int referenceHeight;
+    public interface ReferenceDimensionProvider {
+        int get();
+    }
+
+    private final ReferenceDimensionProvider referenceWidthProvider;
+    private final ReferenceDimensionProvider referenceHeightProvider;
     private final View targetView;
     private final PreferenceConfiguration prefConfig;
     private final Handler handler;
@@ -95,10 +99,17 @@ public class RelativeTouchContext implements TouchContext {
                                 int referenceWidth, int referenceHeight,
                                 View view, PreferenceConfiguration prefConfig)
     {
+        this(conn, actionIndex, () -> referenceWidth, () -> referenceHeight, view, prefConfig);
+    }
+
+    public RelativeTouchContext(NvConnection conn, int actionIndex,
+                                ReferenceDimensionProvider referenceWidthProvider, ReferenceDimensionProvider referenceHeightProvider,
+                                View view, PreferenceConfiguration prefConfig)
+    {
         this.conn = conn;
         this.actionIndex = actionIndex;
-        this.referenceWidth = referenceWidth;
-        this.referenceHeight = referenceHeight;
+        this.referenceWidthProvider = referenceWidthProvider;
+        this.referenceHeightProvider = referenceHeightProvider;
         this.targetView = view;
         this.prefConfig = prefConfig;
         this.handler = new Handler(Looper.getMainLooper());
@@ -149,8 +160,8 @@ public class RelativeTouchContext implements TouchContext {
     public boolean touchDownEvent(int eventX, int eventY, long eventTime, boolean isNewFinger)
     {
         // Get the view dimensions to scale inputs on this touch
-        xFactor = referenceWidth / (double)targetView.getWidth();
-        yFactor = referenceHeight / (double)targetView.getHeight();
+        xFactor = referenceWidthProvider.get() / (double)Math.max(targetView.getWidth(), 1);
+        yFactor = referenceHeightProvider.get() / (double)Math.max(targetView.getHeight(), 1);
 
         originalTouchX = lastTouchX = eventX;
         originalTouchY = lastTouchY = eventY;
@@ -275,8 +286,8 @@ public class RelativeTouchContext implements TouchContext {
                         conn.sendMouseMoveAsMousePosition(
                                 (short) deltaX,
                                 (short) deltaY,
-                                (short) targetView.getWidth(),
-                                (short) targetView.getHeight());
+                                (short) referenceWidthProvider.get(),
+                                (short) referenceHeightProvider.get());
                     }
                     else {
                         conn.sendMouseMove((short) (deltaX*prefConfig.touchPadSensitivity*0.01f), (short) (deltaY*prefConfig.touchPadYSensitity*0.01f));

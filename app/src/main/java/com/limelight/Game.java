@@ -218,6 +218,32 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private float lastAbsTouchUpX, lastAbsTouchUpY;
     private float lastAbsTouchDownX, lastAbsTouchDownY;
 
+    private boolean isPortraitStream() {
+        return displayHeight > displayWidth;
+    }
+
+    private boolean isConfiguredPortraitStream() {
+        return prefConfig != null && prefConfig.height > prefConfig.width;
+    }
+
+    private int getRelativeTouchReferenceWidth() {
+        return isPortraitStream() ? REFERENCE_VERT_RES : REFERENCE_HORIZ_RES;
+    }
+
+    private int getRelativeTouchReferenceHeight() {
+        return isPortraitStream() ? REFERENCE_HORIZ_RES : REFERENCE_VERT_RES;
+    }
+
+    private int getStreamReferenceWidth() {
+        int width = streamContainer != null && streamContainer.getWidth() > 0 ? streamContainer.getWidth() : displayWidth;
+        return Math.max(width, 1);
+    }
+
+    private int getStreamReferenceHeight() {
+        int height = streamContainer != null && streamContainer.getHeight() > 0 ? streamContainer.getHeight() : displayHeight;
+        return Math.max(height, 1);
+    }
+
     private boolean quitOnStop = false;
     private boolean isHidingOverlays;
     private boolean floatingButtonShown;
@@ -421,6 +447,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
             if (prefConfig.autoOrientation) {
                 currentOrientation = getResources().getConfiguration().orientation;
+            } else if (isConfiguredPortraitStream()) {
+                currentOrientation = Configuration.ORIENTATION_PORTRAIT;
             } else {
                 currentOrientation = Configuration.ORIENTATION_LANDSCAPE;
             }
@@ -2830,7 +2858,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         if (prefConfig.absoluteMouseMode) {
                             // NB: view may be null, but we can unconditionally use streamView because we don't need to adjust
                             // relative axis deltas for the position of the streamView within the parent's coordinate system.
-                            conn.sendMouseMoveAsMousePosition(deltaX, deltaY, (short) streamContainer.getWidth(), (short) streamContainer.getHeight());
+                            conn.sendMouseMoveAsMousePosition(deltaX, deltaY, (short) getStreamReferenceWidth(), (short) getStreamReferenceHeight());
                         }
                         else {
                             conn.sendMouseMove(deltaX, deltaY);
@@ -3396,10 +3424,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // Normalize these to the view size. We can't just drop them because we won't always get an event
         // right at the boundary of the view, so dropping them would result in our cursor never really
         // reaching the sides of the screen.
-        eventX = Math.min(Math.max(eventX, 0), streamContainer.getWidth());
-        eventY = Math.min(Math.max(eventY, 0), streamContainer.getHeight());
+        eventX = Math.min(Math.max(eventX, 0), getStreamReferenceWidth());
+        eventY = Math.min(Math.max(eventY, 0), getStreamReferenceHeight());
 
-        conn.sendMousePosition((short)eventX, (short)eventY, (short) streamContainer.getWidth(), (short) streamContainer.getHeight());
+        conn.sendMousePosition((short)eventX, (short)eventY, (short) getStreamReferenceWidth(), (short) getStreamReferenceHeight());
     }
 
     @Override
@@ -3942,6 +3970,37 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     @Override
+    public void onVideoSizeChanged(final int width, final int height) {
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (displayWidth == width && displayHeight == height) {
+                    return;
+                }
+
+                boolean orientationChanged = (displayWidth > displayHeight) != (width > height);
+                displayWidth = width;
+                displayHeight = height;
+                currentOrientation = isPortraitStream() ? Configuration.ORIENTATION_PORTRAIT : Configuration.ORIENTATION_LANDSCAPE;
+
+                if (!(prefConfig.videoScaleMode == PreferenceConfiguration.ScaleMode.STRETCH)) {
+                    streamContainer.setDesiredAspectRatio((double) displayWidth / (double) displayHeight);
+                }
+                streamContainer.requestLayout();
+
+                if (orientationChanged) {
+                    setPreferredOrientationForActivity();
+                    initMouseMode();
+                }
+            }
+        });
+    }
+
+    @Override
     public void onUsbPermissionPromptStarting() {
         // Disable PiP auto-enter while the USB permission prompt is on-screen. This prevents
         // us from entering PiP while the user is interacting with the OS permission dialog.
@@ -4179,9 +4238,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 // Touch mouse disabled
                 touchContextMap[i] = null;
             } else if (!prefConfig.touchscreenTrackpad) {
-                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamContainer, mode == 5);
+                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamContainer, mode == 5, this::getStreamReferenceWidth, this::getStreamReferenceHeight);
             } else if (mode == 3) {
-                touchContextMap[i] = new RelativeTouchContext(conn, i, REFERENCE_HORIZ_RES, REFERENCE_VERT_RES, streamContainer, prefConfig);
+                touchContextMap[i] = new RelativeTouchContext(conn, i, this::getRelativeTouchReferenceWidth, this::getRelativeTouchReferenceHeight, streamContainer, prefConfig);
             } else {
                 touchContextMap[i] = new TrackpadContext(conn, i);
             }
